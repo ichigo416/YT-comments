@@ -1,0 +1,14 @@
+.ytcs-badge {
+  display: inline-block;
+  margin: 4px 0 0;
+  padding: 1px 8px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  font: 500 11px/18px Roboto, Arial, sans-serif;
+  cursor: default;
+}
+.ytcs-badge:not(:disabled) { cursor: pointer; }
+.ytcs-low { background: rgba(46, 160, 67, 0.16); color: #2ea043; border-color: rgba(46, 160, 67, 0.4); }
+.ytcs-medium { background: rgba(210, 153, 34, 0.16); color: #d29922; border-color: rgba(210, 153, 34, 0.4); }
+.ytcs-high { background: rgba(248, 81, 73, 0.16); color: #f85149; border-color: rgba(248, 81, 73, 0.45); }
+.ytcs-blur:not(.ytcs-revealed) { filter: blur(6px); user-select: none; }
