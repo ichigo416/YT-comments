@@ -32,6 +32,9 @@ def sha256_file(path: Path) -> str:
             digest.update(chunk)
     return digest.hexdigest()
 
+def sha256_source(path: Path) -> str:
+    """Hash a source file with line endings normalised (CRLF == LF)."""
+    return hashlib.sha256(path.read_bytes().replace(b"\r\n", b"\n")).hexdigest() 
 
 def save_artifact(pipeline: Any, out_dir: Path, extra: dict[str, Any]) -> dict[str, Any]:
     out_dir.mkdir(parents=True, exist_ok=True)
