@@ -1,7 +1,6 @@
 /**
  * Express application factory. Building it in a function (rather than at module
  * scope) lets tests create isolated instances with supertest.
- *
  * Security stack, applied in order:
  *  1. helmet          - sets standard security headers (CSP, no-sniff, etc.)
  *  2. cors            - allow-list only; the extension's chrome-extension:// origin
