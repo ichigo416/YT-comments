@@ -1,63 +1,63 @@
+/**
+ * Express application factory. Building it in a function (rather than at module
+ * scope) lets tests create isolated instances with supertest.
+ *
+ * Security stack, applied in order:
+ *  1. helmet          - sets standard security headers (CSP, no-sniff, etc.)
+ *  2. cors            - allow-list only; the extension's chrome-extension:// origin
+ *                       must be added to ALLOWED_ORIGINS, no wildcard in production
+ *  3. json body-limit - small cap; this API only ever receives short comment batches
+ *  4. rate limiter     - per-IP, only on the expensive /api/score route
+ *  5. routes
+ *  6. 404 + centralised error handler (must be registered last)
+ */
 import cors from "cors";
-import express, { type ErrorRequestHandler } from "express";
-import rateLimit from "express-rate-limit";
+import express, { type Express } from "express";
 import helmet from "helmet";
-import { config, isProduction } from "./config.js";
+import { config } from "./config.js";
+import { errorHandler, notFoundHandler } from "./middleware/errorHandler.js";
+import { scoreRateLimiter } from "./middleware/rateLimiter.js";
+import { healthRouter } from "./routes/health.js";
 import { scoreRouter } from "./routes/score.js";
 
-/** Requests without an Origin header (curl, scripts) are only accepted outside production. */
-function isAllowedOrigin(origin: string | undefined): boolean {
-  if (!origin) return !isProduction;
-  return config.ALLOWED_ORIGINS.includes(origin);
-}
-
-export function createApp() {
+export function createApp(): Express {
   const app = express();
 
+  // Only trust the first hop (e.g. a single reverse proxy). Do NOT set this to
+  // `true` — that would trust the client-supplied X-Forwarded-For and let the
+  // rate limiter be bypassed by spoofing it.
+  app.set("trust proxy", 1);
   app.disable("x-powered-by");
-  if (config.TRUST_PROXY === "1") app.set("trust proxy", 1);
-
-  app.use(helmet());
-
-  // Reject unknown origins outright (CORS alone only hides responses from browsers).
-  app.use((req, res, next) => {
-    if (req.path === "/health" || isAllowedOrigin(req.headers.origin)) {
-      next();
-      return;
-    }
-    res.status(403).json({ error: "forbidden_origin" });
-  });
-
-  app.use(cors({ origin: config.ALLOWED_ORIGINS, methods: ["POST"], allowedHeaders: ["Content-Type"], maxAge: 600 }));
-
-  app.use(express.json({ limit: "64kb" }));
-
-  app.get("/health", (_req, res) => {
-    res.json({ status: "ok" });
-  });
 
   app.use(
-    "/api",
-    rateLimit({
-      windowMs: 60_000,
-      limit: 60,
-      standardHeaders: "draft-7",
-      legacyHeaders: false,
-      message: { error: "rate_limited" },
+    helmet({
+      contentSecurityPolicy: { useDefaults: true, directives: { "default-src": ["'none'"] } },
+      crossOriginResourcePolicy: { policy: "same-origin" },
     }),
-    scoreRouter,
   );
 
-  app.use((_req, res) => {
-    res.status(404).json({ error: "not_found" });
-  });
+  app.use(
+    cors({
+      origin(origin, callback) {
+        // No Origin header (curl, server-to-server, health checks) is allowed through;
+        // browser requests always send Origin, so this doesn't weaken the check for them.
+        if (!origin || config.ALLOWED_ORIGINS.includes(origin)) {
+          callback(null, true);
+          return;
+        }
+        callback(new Error("Not allowed by CORS"));
+      },
+      methods: ["GET", "POST"],
+      allowedHeaders: ["Content-Type"],
+    }),
+  );
 
-  const errorHandler: ErrorRequestHandler = (error, _req, res, _next) => {
-    // Malformed JSON and oversized bodies are client errors; everything else is ours.
-    const status = typeof error?.status === "number" && error.status < 500 ? error.status : 500;
-    if (status === 500) console.error("[error]", error);
-    res.status(status).json({ error: status === 500 ? "internal_error" : "invalid_request" });
-  };
+  app.use(express.json({ limit: "100kb" }));
+
+  app.use("/health", healthRouter);
+  app.use("/api/score", scoreRateLimiter, scoreRouter);
+
+  app.use(notFoundHandler);
   app.use(errorHandler);
 
   return app;

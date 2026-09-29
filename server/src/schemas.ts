@@ -1,25 +1,48 @@
+/**
+ * Request/response validation. Zod both validates and infers TypeScript types,
+ * so there is a single source of truth (see .env.example note: no separate types.ts).
+ */
 import { z } from "zod";
+import { config } from "./config.js";
 
-export const MAX_BATCH = 50;
-export const MAX_TEXT_LENGTH = 1000;
-
-/** Body accepted from the browser extension. Unknown keys are rejected. */
-export const scoreRequestSchema = z
+// Matches ml/inference: max 2000 chars per comment, safe id charset, no extra keys.
+const CommentInputSchema = z
   .object({
-    texts: z.array(z.string().min(1).max(MAX_TEXT_LENGTH)).min(1).max(MAX_BATCH),
+    id: z
+      .string()
+      .min(1)
+      .max(64)
+      .regex(/^[A-Za-z0-9_-]+$/, "id may contain only letters, numbers, '_' and '-'"),
+    text: z.string().min(1).max(2000),
   })
   .strict();
 
-const probability = z.number().min(0).max(1);
+export const ScoreRequestSchema = z
+  .object({
+    comments: z
+      .array(CommentInputSchema)
+      .min(1, "comments must contain at least one item")
+      .max(config.MAX_COMMENTS_PER_REQUEST, `comments may contain at most ${config.MAX_COMMENTS_PER_REQUEST} items`)
+      .refine(
+        (items) => new Set(items.map((c) => c.id)).size === items.length,
+        "comment ids must be unique",
+      ),
+  })
+  .strict();
 
-export const scoreSchema = z.object({
-  toxicity: probability,
-  labels: z.record(probability),
+export type ScoreRequest = z.infer<typeof ScoreRequestSchema>;
+export type CommentInput = z.infer<typeof CommentInputSchema>;
+
+export const CommentScoreSchema = z.object({
+  id: z.string(),
+  toxicity: z.number().min(0).max(1),
+  categories: z.record(z.string(), z.number()),
 });
 
-/** Response we trust from the inference service only after it passes this check. */
-export const inferenceResponseSchema = z.object({
-  scores: z.array(scoreSchema).min(1).max(MAX_BATCH),
+export const InferenceResponseSchema = z.object({
+  results: z.array(CommentScoreSchema),
+  model_version: z.string(),
 });
 
-export type Score = z.infer<typeof scoreSchema>;
+export type CommentScore = z.infer<typeof CommentScoreSchema>;
+export type InferenceResponse = z.infer<typeof InferenceResponseSchema>;
