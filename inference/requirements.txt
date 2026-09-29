@@ -1,6 +1,9 @@
-fastapi==0.115.5
-uvicorn==0.32.1
-pydantic==2.10.3
-scikit-learn==1.5.2
-joblib==1.4.2
-python-dotenv==1.0.1
+fastapi>=0.115,<1
+uvicorn>=0.30,<1
+pydantic>=2.8,<3
+pydantic-settings>=2.4,<3
+# scikit-learn, numpy and joblib MUST match the versions in ml/ (the model is a pickle).
+# After training, run `pip freeze` in ml/.venv and pin these three exactly.
+scikit-learn>=1.5,<2
+numpy>=1.26,<3
+joblib>=1.4,<2
