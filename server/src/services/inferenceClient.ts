@@ -59,7 +59,7 @@ export async function scoreComments(comments: CommentInput[]): Promise<Inference
       clearTimeout(timer);
       if (err instanceof InferenceError) throw err; // don't retry validation/4xx failures
       lastError = err;
-      // one retry only, for transient network errors / timeouts
+      
     }
   }
 
