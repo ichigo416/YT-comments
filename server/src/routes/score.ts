@@ -1,26 +1,19 @@
+/**
+ * POST /api/score — the extension's only endpoint on this server.
+ * Body is Zod-validated before anything touches the inference client.
+ */
 import { Router } from "express";
-import { scoreRequestSchema } from "../schemas.js";
-import { scoreTexts, UpstreamError } from "../services/scorer.js";
+import { ScoreRequestSchema } from "../schemas.js";
+import { scoreComments } from "../services/inferenceClient.js";
 
 export const scoreRouter = Router();
 
-scoreRouter.post("/score", async (req, res, next) => {
-  const body = scoreRequestSchema.safeParse(req.body);
-  if (!body.success) {
-    res.status(400).json({ error: "invalid_request" });
-    return;
-  }
-
+scoreRouter.post("/", async (req, res, next) => {
   try {
-    const scores = await scoreTexts(body.data.texts);
-    res.json({ scores });
-  } catch (error) {
-    if (error instanceof UpstreamError) {
-      // Log the reason server-side (never the comment text); return a generic message.
-      console.error("[score] upstream failure:", error.message);
-      res.status(502).json({ error: "scoring_unavailable" });
-      return;
-    }
-    next(error);
+    const { comments } = ScoreRequestSchema.parse(req.body);
+    const result = await scoreComments(comments);
+    res.status(200).json(result);
+  } catch (err) {
+    next(err);
   }
 });

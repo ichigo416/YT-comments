@@ -1,20 +1,20 @@
 import { config } from "../config.js";
-import { inferenceResponseSchema, type Score } from "../schemas.js";
+import { InferenceResponseSchema, type InferenceResponse } from "../schemas.js";
 
 const INFERENCE_TIMEOUT_MS = 5_000;
 
 export class UpstreamError extends Error {}
 
-export async function scoreTexts(texts: string[]): Promise<Score[]> {
+export async function scoreTexts(texts: string[]): Promise<InferenceResponse["results"]> {
   let response: Response;
   try {
     response = await fetch(new URL("/predict/batch", config.INFERENCE_URL), {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-Internal-Token": config.INTERNAL_TOKEN,
+        "X-Internal-Token": config.INTERNAL_API_TOKEN,
       },
-      body: JSON.stringify({ texts }),
+      body: JSON.stringify({ comments: texts.map((text, index) => ({ id: String(index), text })) }),
       signal: AbortSignal.timeout(INFERENCE_TIMEOUT_MS),
     });
   } catch {
@@ -25,9 +25,9 @@ export async function scoreTexts(texts: string[]): Promise<Score[]> {
     throw new UpstreamError(`Inference service responded with ${response.status}`);
   }
 
-  const parsed = inferenceResponseSchema.safeParse(await response.json());
-  if (!parsed.success || parsed.data.scores.length !== texts.length) {
+  const parsed = InferenceResponseSchema.safeParse(await response.json());
+  if (!parsed.success || parsed.data.results.length !== texts.length) {
     throw new UpstreamError("Inference service returned an unexpected payload");
   }
-  return parsed.data.scores;
+  return parsed.data.results;
 }
