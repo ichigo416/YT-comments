@@ -44,8 +44,6 @@ export function errorHandler(
     res.status(400).json({ error: "Malformed JSON body" });
     return;
   }
-
-  // body-parser's PayloadTooLargeError (thrown when the body exceeds express.json({ limit })).
   if (isBodyParserError(err) && (err.status === 413 || err.type === "entity.too.large")) {
     res.status(413).json({ error: "Request body too large" });
     return;
