@@ -1,58 +1,69 @@
-// Bundles the extension into ./dist and generates manifest.json.
-// Usage:  API_BASE_URL=https://api.example.com npm run build   (defaults to http://localhost:8080)
-import { build } from "esbuild";
-import { cpSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+/**
+ * Build script for all three extension entry points, using esbuild directly
+ * (no Vite/@crxjs — MV3 content scripts and service workers cannot be ES
+ * modules loaded by <script type=module> in the page, so everything is
+ * bundled to a plain IIFE; the popup is the one bundle that can stay a module).
+ *
+ * Usage:
+ *   node build.mjs                 -> production build (minified, HTTPS-only SERVER_URL required)
+ *   node build.mjs --watch         -> dev build (unminified, allows http://127.0.0.1)
+ *   node build.mjs --server-url=<url>   -> override the baked-in SERVER_URL
+ */
+import { build, context } from "esbuild";
+import { existsSync, mkdirSync, cpSync, rmSync } from "node:fs";
+import path from "node:path";
 
-const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1"]);
+const isWatch = process.argv.includes("--watch");
+const cliServerUrl = process.argv.find((a) => a.startsWith("--server-url="))?.split("=")[1];
+const serverUrl = cliServerUrl ?? (isWatch ? "http://127.0.0.1:3000" : process.env.SERVER_URL);
 
-const apiUrl = new URL(process.env.API_BASE_URL ?? "http://localhost:8080");
-if (apiUrl.protocol !== "https:" && !LOCAL_HOSTS.has(apiUrl.hostname)) {
-  throw new Error("API_BASE_URL must use https:// unless it points at localhost");
+if (!isWatch) {
+  if (!serverUrl) {
+    console.error("Production build requires SERVER_URL (env var or --server-url=<https://...>).");
+    process.exit(1);
+  }
+  const url = new URL(serverUrl); // throws on malformed input
+  const isLocal = url.hostname === "localhost" || url.hostname === "127.0.0.1";
+  if (url.protocol !== "https:" && !isLocal) {
+    console.error("SERVER_URL must be https:// for a production build.");
+    process.exit(1);
+  }
 }
 
-rmSync("dist", { recursive: true, force: true });
-mkdirSync("dist", { recursive: true });
+const OUT_DIR = "dist";
+rmSync(OUT_DIR, { recursive: true, force: true });
+mkdirSync(OUT_DIR, { recursive: true });
 
-await build({
-  entryPoints: {
-    background: "src/background.ts",
-    content: "src/content.ts",
-    popup: "src/popup/main.tsx",
-  },
-  outdir: "dist",
+const define = { __SERVER_URL__: JSON.stringify(serverUrl) };
+const shared = {
   bundle: true,
-  format: "iife",
-  target: "chrome110",
-  jsx: "automatic",
-  minify: true,
-  define: {
-    __API_BASE__: JSON.stringify(apiUrl.origin),
-    "process.env.NODE_ENV": '"production"',
-  },
+  minify: !isWatch,
+  sourcemap: isWatch,
+  target: "chrome116",
+  define,
   logLevel: "info",
-});
-
-cpSync("static", "dist", { recursive: true });
-
-const manifest = {
-  manifest_version: 3,
-  name: "Comment Toxicity Scorer for YouTube",
-  version: "1.0.0",
-  description: "Scores YouTube comments for toxicity and lets you badge or blur the toxic ones.",
-  permissions: ["storage"],
-  host_permissions: ["https://www.youtube.com/*", `${apiUrl.origin}/*`],
-  background: { service_worker: "background.js" },
-  content_scripts: [
-    {
-      matches: ["https://www.youtube.com/*"],
-      js: ["content.js"],
-      css: ["content.css"],
-      run_at: "document_idle",
-    },
-  ],
-  action: { default_title: "Comment scorer", default_popup: "popup.html" },
-  content_security_policy: { extension_pages: "script-src 'self'; object-src 'self'" },
 };
 
-writeFileSync("dist/manifest.json", `${JSON.stringify(manifest, null, 2)}\n`);
-console.log(`Built extension -> dist/  (API: ${apiUrl.origin})`);
+const entries = [
+  { entryPoints: ["src/background/index.ts"], outfile: `${OUT_DIR}/background.js`, format: "iife" },
+  { entryPoints: ["src/content/index.ts"], outfile: `${OUT_DIR}/content.js`, format: "iife" },
+  { entryPoints: ["src/popup/main.tsx"], outfile: `${OUT_DIR}/popup.js`, format: "iife" },
+];
+
+function copyStaticFiles() {
+  cpSync("public", OUT_DIR, { recursive: true });
+  console.log("Copied public/ -> dist/");
+}
+
+if (isWatch) {
+  const ctxs = await Promise.all(entries.map((e) => context({ ...shared, ...e })));
+  await Promise.all(ctxs.map((c) => c.watch()));
+  copyStaticFiles();
+  console.log("Watching for changes (Ctrl+C to stop)...");
+} else {
+  for (const entry of entries) {
+    await build({ ...shared, ...entry });
+  }
+  copyStaticFiles();
+  console.log(`Production build complete -> ${path.resolve(OUT_DIR)} (SERVER_URL=${serverUrl})`);
+}

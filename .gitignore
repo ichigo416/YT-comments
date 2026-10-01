@@ -1,31 +1,25 @@
-**/node_modules/
-**/dist/
-
-# Local environment files; keep shareable templates.
+# secrets
 .env
 .env.*
 !.env.example
 
-# Credentials and private keys.
-secrets/
-credentials.json
-service-account*.json
-*.pem
-*.key
-*.p12
-*.pfx
+# python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
 
-# Machine-specific VS Code interpreter selection.
-/.vscode/settings.json
+# node
+node_modules/
+dist/
 
-# Python environments and generated files.
-**/.venv/
-**/venv/
-**/__pycache__/
-*.py[cod]
-
-# Local training data and generated model artifacts.
+# ML data and generated artifacts (never commit)
 ml/data/
-ml/jigsaw-toxic-comment-classification-challenge/
 ml/artifacts/
+ml/jigsaw-toxic-comment-classification-challenge/
 *.joblib
+*.zip
+
+# editor / OS
+.vscode/
+.DS_Store
