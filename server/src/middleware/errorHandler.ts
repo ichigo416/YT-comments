@@ -40,6 +40,11 @@ export function errorHandler(
     return;
   }
 
+  if (err instanceof Error && err.message === "Not allowed by CORS") {
+    res.status(403).json({ error: "Origin not allowed" });
+    return;
+  }
+
   if (err instanceof SyntaxError && "status" in err && (err as { status?: number }).status === 400) {
     res.status(400).json({ error: "Malformed JSON body" });
     return;
