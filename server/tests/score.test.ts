@@ -55,7 +55,7 @@ describe("CORS", () => {
       .post("/api/score")
       .set("Origin", "https://evil.example")
       .send({ comments: [{ id: "a", text: "hello" }] });
-    expect(res.status).toBe(500); // cors() surfaces a generic Error -> errorHandler's 500 path
+    expect(res.status).toBe(403);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });
